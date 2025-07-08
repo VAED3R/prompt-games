@@ -29,17 +29,30 @@ const page = () => {
 
   // Function to check if AI response contains forbidden words
   const checkForbiddenWords = (aiResponse) => {
-    const responseLower = aiResponse.toLowerCase();
     const foundWords = [];
+    
+    // Clean the response: remove all whitespace, newlines, and symbols
+    const cleanedResponse = aiResponse.toLowerCase().replace(/[\s\n\r\t.,!?;:'"`~@#$%^&*()_+\-=\[\]{}|\\/<>]/g, '');
     
     OBJECTIVES.forEach((word, index) => {
       const wordLower = word.toLowerCase();
-      if (responseLower.includes(wordLower)) {
+      
+      // Check if the word exists in the cleaned response
+      if (cleanedResponse.includes(wordLower)) {
         foundWords.push(index);
       }
     });
     
     return foundWords;
+  };
+
+  // Function to convert markdown to HTML
+  const formatMessage = (text) => {
+    return text
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')  // **bold**
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')              // *italic*
+      .replace(/`(.*?)`/g, '<code>$1</code>')            // `code`
+      .replace(/\n/g, '<br>');                           // line breaks
   };
 
   const handleSend = async () => {
@@ -127,8 +140,8 @@ const page = () => {
                           ? `${styles.bubble} ${styles.aiBubble}`
                           : styles.bubble
                       }
+                      dangerouslySetInnerHTML={{ __html: formatMessage(msg.text) }}
                     >
-                      {msg.text}
                     </span>
                   </div>
                 ))
