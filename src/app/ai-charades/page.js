@@ -1,5 +1,8 @@
 'use client';
 import React, { useState, useRef, useEffect } from 'react'
+import { useRouter } from 'next/navigation';
+import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 import styles from './page.module.css'
 
 const MOVIES = [
@@ -13,6 +16,7 @@ const MOVIES = [
 ];
 
 const page = () => {
+  const router = useRouter();
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([]);
   const [objectives, setObjectives] = useState(
@@ -25,12 +29,162 @@ const page = () => {
   const [currentMovieIndex, setCurrentMovieIndex] = useState(0);
   const messagesEndRef = useRef(null);
   const [loading, setLoading] = useState(false);
+  const [timer, setTimer] = useState(0);
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [gameCompleted, setGameCompleted] = useState(false);
+  const timerRef = useRef(null);
+  const [userId, setUserId] = useState(null);
+  const [isLoadingProgress, setIsLoadingProgress] = useState(true);
+
+  // Load user progress on component mount
+  useEffect(() => {
+    const loadUserProgress = async () => {
+      try {
+        console.log('Loading user progress...');
+        
+        // Get user ID from localStorage (set during registration)
+        const storedUserId = localStorage.getItem('userId');
+        console.log('Stored userId from localStorage:', storedUserId);
+        
+        if (storedUserId) {
+          setUserId(storedUserId);
+          
+          // Get user progress from Firebase
+          console.log('Fetching user document from Firebase...');
+          const userDoc = await getDoc(doc(db, 'users', storedUserId));
+          
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            console.log('User data from Firebase:', userData);
+            
+            if (userData.gameProgress) {
+              const progress = userData.gameProgress;
+              console.log('Found game progress:', progress);
+              
+              // Restore game state
+              setCurrentMovieIndex(progress.currentMovieIndex || 0);
+              setTimer(progress.timer || 0);
+              setMessages(progress.messages || []);
+              setObjectives(progress.objectives || MOVIES.map((movie, index) => ({ 
+                movie, 
+                status: index === 0 ? 'current' : 'pending',
+                revealed: false 
+              })));
+              setGameCompleted(progress.gameCompleted || false);
+              setIsTimerRunning(progress.isTimerRunning || false);
+              
+              console.log('Game progress loaded successfully');
+            } else {
+              console.log('No game progress found, starting fresh game');
+            }
+          } else {
+            console.log('User document not found in Firebase');
+          }
+        } else {
+          console.log('No userId found in localStorage');
+        }
+      } catch (error) {
+        console.error('Error loading progress:', error);
+        console.error('Error details:', {
+          errorMessage: error.message,
+          errorCode: error.code
+        });
+      } finally {
+        setIsLoadingProgress(false);
+      }
+    };
+
+    loadUserProgress();
+  }, []);
+
+  // Save progress to Firebase
+  const saveProgress = async () => {
+    if (!userId) {
+      console.log('No userId available, skipping save');
+      return;
+    }
+    
+    try {
+      console.log('Attempting to save progress for user:', userId);
+      
+      const progress = {
+        currentMovieIndex,
+        timer,
+        messages,
+        objectives,
+        gameCompleted,
+        isTimerRunning,
+        lastSaved: new Date().toISOString()
+      };
+
+      console.log('Progress data to save:', progress);
+
+      await updateDoc(doc(db, 'users', userId), {
+        gameProgress: progress
+      });
+      
+      console.log('Progress saved successfully for user:', userId);
+    } catch (error) {
+      console.error('Error saving progress:', error);
+      console.error('Error details:', {
+        userId,
+        errorMessage: error.message,
+        errorCode: error.code
+      });
+    }
+  };
+
+  // Save progress periodically
+  useEffect(() => {
+    if (!isLoadingProgress && userId) {
+      console.log('Setting up progress save interval for user:', userId);
+      const saveInterval = setInterval(() => {
+        console.log('Auto-saving progress...');
+        saveProgress();
+      }, 5000); // Save every 5 seconds
+      return () => clearInterval(saveInterval);
+    }
+  }, [currentMovieIndex, timer, messages, objectives, gameCompleted, isTimerRunning, userId, isLoadingProgress]);
 
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages]);
+
+  // Timer effect
+  useEffect(() => {
+    if (isTimerRunning && !gameCompleted) {
+      timerRef.current = setInterval(() => {
+        setTimer(prev => prev + 1);
+      }, 1000);
+    } else if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, [isTimerRunning, gameCompleted]);
+
+  // Function to pause timer
+  const pauseTimer = () => {
+    setIsTimerRunning(false);
+  };
+
+  // Function to resume timer
+  const resumeTimer = () => {
+    setIsTimerRunning(true);
+  };
+
+  // Function to format time
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
 
   // Function to censor movie names
   const censorMovie = (movieName) => {
@@ -99,11 +253,103 @@ const page = () => {
         // Move to next movie
         if (currentMovieIndex < MOVIES.length - 1) {
           setCurrentMovieIndex(prev => prev + 1);
-        } else {
+          
+          // Pause timer while generating clue
+          pauseTimer();
+          
+          // Show loading message for next clue
           setMessages(prev => [...prev, { 
-            text: "🎊 Congratulations! You've completed all the movies! 🎊", 
+            text: "🎬 Generating clue for the next movie...", 
             from: "ai" 
           }]);
+          
+          // Automatically get the next clue
+          setTimeout(async () => {
+            try {
+              const res = await fetch("/api/ai-charades", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 
+                  message: "Give me a clue for the next movie",
+                  currentMovie: MOVIES[currentMovieIndex + 1]
+                }),
+              });
+              const data = await res.json();
+              if (data.message) {
+                // Replace the loading message with the actual clue
+                setMessages(prev => {
+                  const newMessages = [...prev];
+                  newMessages[newMessages.length - 1] = { text: data.message, from: "ai" };
+                  return newMessages;
+                });
+                
+                // Resume timer after clue is ready
+                resumeTimer();
+              } else if (data.error) {
+                setMessages(prev => {
+                  const newMessages = [...prev];
+                  newMessages[newMessages.length - 1] = { text: `Error: ${data.error}`, from: "ai" };
+                  return newMessages;
+                });
+                
+                // Resume timer even on error
+                resumeTimer();
+              }
+            } catch (err) {
+              setMessages(prev => {
+                const newMessages = [...prev];
+                newMessages[newMessages.length - 1] = { text: `Error: ${err.message}`, from: "ai" };
+                return newMessages;
+              });
+              
+              // Resume timer even on error
+              resumeTimer();
+            }
+          }, 1000); // 1 second delay before showing next clue
+          
+        } else {
+          // Game completed - stop timer
+          setGameCompleted(true);
+          setIsTimerRunning(false);
+          
+          const finalTime = timer;
+          const completionTime = new Date().toISOString();
+          
+          setMessages(prev => [...prev, { 
+            text: `🎊 Congratulations! You've completed all the movies in ${formatTime(timer)}! 🎊`, 
+            from: "ai" 
+          }]);
+          
+          // Save completion data to database
+          try {
+            if (userId) {
+              const completionData = {
+                gameCompleted: true,
+                completionTime: completionTime,
+                finalTime: finalTime,
+                finalTimeFormatted: formatTime(finalTime),
+                totalMovies: MOVIES.length,
+                completedAt: completionTime
+              };
+              
+              await updateDoc(doc(db, 'users', userId), {
+                gameProgress: {
+                  currentMovieIndex,
+                  timer: finalTime,
+                  messages,
+                  objectives,
+                  gameCompleted: true,
+                  isTimerRunning: false,
+                  lastSaved: completionTime
+                },
+                completionData: completionData
+              });
+              
+              console.log('Game completion saved to database:', completionData);
+            }
+          } catch (error) {
+            console.error('Error saving completion data:', error);
+          }
         }
       } else {
         // Regular API call for emoji clues
@@ -118,6 +364,11 @@ const page = () => {
         const data = await res.json();
         if (data.message) {
           setMessages(prev => [...prev, { text: data.message, from: "ai" }]);
+          
+          // Start timer on first AI response
+          if (!isTimerRunning && messages.length === 0) {
+            setIsTimerRunning(true);
+          }
         } else if (data.error) {
           setMessages(prev => [...prev, { text: `Error: ${data.error}`, from: "ai" }]);
         }
@@ -139,6 +390,18 @@ const page = () => {
     return MOVIES[currentMovieIndex];
   };
 
+  // Show loading screen while loading progress
+  if (isLoadingProgress) {
+    return (
+      <div className={styles.container}>
+        <div style={{ textAlign: 'center', color: '#4f8cff' }}>
+          <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>🎭</div>
+          <div>Loading your progress...</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <div className={styles.background} />
@@ -148,6 +411,15 @@ const page = () => {
           <span style={{ fontWeight: 600, fontSize: '1.25rem', color: '#4f8cff', letterSpacing: '0.01em' }}>AI Charades</span>
         </div>
         <h1 className={styles.heading}>Movie Charades with Emoji Clues</h1>
+        
+        {/* Timer Display */}
+        <div className={styles.timerContainer}>
+          <div className={styles.timer}>
+            <span className={styles.timerLabel}>Time:</span>
+            <span className={styles.timerValue}>{formatTime(timer)}</span>
+          </div>
+        </div>
+        
         <div className={styles.pageContent}>
           <div className={styles.chatBox}>
             <div className={styles.messages}>
