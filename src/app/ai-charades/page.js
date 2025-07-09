@@ -239,6 +239,15 @@ const page = () => {
           from: "ai" 
         }]);
         
+        // Add a celebratory message for correct answers
+        setTimeout(() => {
+          const progress = Math.round(((currentMovieIndex + 1) / MOVIES.length) * 100);
+          setMessages(prev => [...prev, { 
+            text: `✨ Great job! You're ${progress}% through the game! ✨\n\n🎬 Next movie coming up...`, 
+            from: "ai" 
+          }]);
+        }, 1000);
+        
         // Update objectives
         setObjectives(prev => 
           prev.map((obj, index) => 
@@ -319,6 +328,14 @@ const page = () => {
             text: `🎊 Congratulations! You've completed all the movies in ${formatTime(timer)}! 🎊`, 
             from: "ai" 
           }]);
+          
+          // Add a celebratory completion message
+          setTimeout(() => {
+            setMessages(prev => [...prev, { 
+              text: `🏆 Amazing job! You've mastered all ${MOVIES.length} movies! 🏆\n\n⏱️ Final Time: ${formatTime(timer)}\n🎯 Movies Completed: ${MOVIES.length}\n\n🌟 You're a true movie charades champion! 🌟`, 
+              from: "ai" 
+            }]);
+          }, 2000);
           
           // Save completion data to database
           try {
@@ -424,10 +441,18 @@ const page = () => {
           <div className={styles.chatBox}>
             <div className={styles.messages}>
               {messages.length === 0 ? (
-                <div style={{ color: '#888' }}>
-                  Welcome to Movie Charades! 🎬<br/>
-                  The AI will give you emoji clues for movies. Try to guess the movie name!<br/>
-                  Current movie: {censorMovie(getCurrentMovie())}
+                <div style={{ color: '#888', textAlign: 'center', padding: '20px' }}>
+                  <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>🎭</div>
+                  <div style={{ fontSize: '1.2rem', fontWeight: '600', color: '#4f8cff', marginBottom: '1rem' }}>
+                    Welcome to AI Movie Charades!
+                  </div>
+                  <div style={{ marginBottom: '1rem', lineHeight: '1.6' }}>
+                    🎬 <strong>How to Play:</strong><br/>
+                    • The AI will give you emoji clues for movies<br/>
+                    • Try to guess the movie name from the clues<br/>
+                    • Ask questions like "Is it a Disney movie?" or "What genre?"<br/>
+                    • Type "Start" to begin your first clue!
+                  </div>
                 </div>
               ) : (
                 messages.map((msg, idx) => (
