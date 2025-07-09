@@ -90,29 +90,46 @@
   transform: scale(1.15);
 }
 
-.checked {
+.completed {
   color: #22c55e !important;
-}
-.crossed {
-  color: #ef4444 !important;
-  text-decoration: line-through;
-  animation: strikeThrough 0.8s ease-in-out;
+  font-weight: 600;
+  animation: completedPulse 0.6s ease-in-out;
 }
 
-@keyframes strikeThrough {
+.current {
+  color: #4f8cff !important;
+  font-weight: 600;
+  animation: currentGlow 2s ease-in-out infinite alternate;
+}
+
+.pending {
+  color: #9ca3af !important;
+  opacity: 0.7;
+}
+
+@keyframes completedPulse {
   0% {
     color: #22223b;
-    text-decoration: none;
+    transform: scale(1);
   }
   50% {
-    color: #ef4444;
-    text-decoration: line-through;
+    color: #22c55e;
     transform: scale(1.05);
   }
   100% {
-    color: #ef4444;
-    text-decoration: line-through;
+    color: #22c55e;
     transform: scale(1);
+  }
+}
+
+@keyframes currentGlow {
+  0% {
+    color: #4f8cff;
+    text-shadow: 0 0 5px rgba(79, 140, 255, 0.3);
+  }
+  100% {
+    color: #4f8cff;
+    text-shadow: 0 0 10px rgba(79, 140, 255, 0.6);
   }
 }
 
