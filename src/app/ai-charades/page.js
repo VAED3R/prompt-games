@@ -134,17 +134,14 @@ const page = () => {
     }
   };
 
-  // Save progress periodically
+  // Save progress for other state changes (not timer)
   useEffect(() => {
-    if (!isLoadingProgress && userId) {
-      console.log('Setting up progress save interval for user:', userId);
-      const saveInterval = setInterval(() => {
-        console.log('Auto-saving progress...');
-        saveProgress();
-      }, 5000); // Save every 5 seconds
-      return () => clearInterval(saveInterval);
+    if (!isLoadingProgress && userId && !isTimerRunning) {
+      // Save progress when other state changes (messages, objectives, etc.)
+      // Timer is saved separately in the timer effect
+      saveProgress();
     }
-  }, [currentMovieIndex, timer, messages, objectives, gameCompleted, isTimerRunning, userId, isLoadingProgress]);
+  }, [currentMovieIndex, messages, objectives, gameCompleted, userId, isLoadingProgress]);
 
   useEffect(() => {
     if (messagesEndRef.current) {
@@ -156,7 +153,10 @@ const page = () => {
   useEffect(() => {
     if (isTimerRunning && !gameCompleted) {
       timerRef.current = setInterval(() => {
-        setTimer(prev => prev + 1);
+        setTimer(prev => {
+          const newTimer = prev + 1;
+          return newTimer;
+        });
       }, 1000);
     } else if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -168,6 +168,13 @@ const page = () => {
       }
     };
   }, [isTimerRunning, gameCompleted]);
+
+  // Save timer to database whenever it changes
+  useEffect(() => {
+    if (userId && !isLoadingProgress && timer > 0) {
+      saveProgress();
+    }
+  }, [timer, userId, isLoadingProgress]);
 
   // Function to pause timer
   const pauseTimer = () => {
